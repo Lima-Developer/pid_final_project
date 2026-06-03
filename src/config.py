@@ -14,9 +14,13 @@ PRESENTATION_DIR = ROOT_DIR / "presentation"
 YOLO_MODEL_PATH = MODELS_DIR / "yolov8n-face-lindevs.onnx"
 HAAR_CASCADE_DIR = MODELS_DIR / "haarcascades"
 
+GITHUB_USER = "Lima-Developer"
+GITHUB_REPO = "pid_final_project"
+RELEASE_TAG = "0.1.0-SNAPSHOT"
+
 # URL de backup (modelo já exportado pelo lindevs, compatível com OpenCV)
 YOLO_MODEL_URLS = [
-    "https://github.com/lindevs/yolov8-face/releases/download/v1.0.0/yolov8n-face-lindevs.onnx",
+    f"https://github.com/{GITHUB_USER}/{GITHUB_REPO}/releases/download/{RELEASE_TAG}/yolov8n-face-lindevs.onnx",
 ]
 
 # Classes do modelo YOLO-Face (apenas 1 classe: face)
