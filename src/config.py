@@ -16,7 +16,7 @@ HAAR_CASCADE_DIR = MODELS_DIR / "haarcascades"
 
 GITHUB_USER = "Lima-Developer"
 GITHUB_REPO = "pid_final_project"
-RELEASE_TAG = "0.1.0-SNAPSHOT"
+RELEASE_TAG = "0.1.1-SNAPSHOT"
 
 # URL de backup (modelo já exportado pelo lindevs, compatível com OpenCV)
 YOLO_MODEL_URLS = [
