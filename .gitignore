@@ -252,21 +252,7 @@ $RECYCLE.BIN/
 # DADOS / RESULTADOS (NÃO SUBIR!)
 # ============================================
 
-# Diretórios de dados
-data/
-!data/.gitkeep
-!data/**/.gitkeep
-
-# Diretórios de resultados
-results/
-!results/.gitkeep
-
-# Diretórios de apresentação
-presentation/
-!presentation/.gitkeep
-
 # Vídeos processados
-*.mp4
 *.avi
 *.mov
 *.mkv
