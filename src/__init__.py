@@ -1,0 +1,1 @@
+"""Face Privacy Blur package."""
