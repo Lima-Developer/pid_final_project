@@ -5,58 +5,37 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from .config import FACE_CLASSES, YOLO_MODEL_PATH, YOLO_MODEL_URLS
+from .config import YOLO_FACE_MODEL_PATH, YOLO_FACE_MODEL_URLS
 from .utils import download_file, ensure_dir
 
 
 def ensure_yolo_face_model(skip_downloads: bool = False) -> Path:
-    """Garante que o modelo YOLO-Face ONNX está disponível."""
-    if YOLO_MODEL_PATH.exists():
-        # Verifica se o arquivo não está corrompido (> 5MB)
-        if YOLO_MODEL_PATH.stat().st_size > 5_000_000:
-            return YOLO_MODEL_PATH
+    """Garante que o modelo YOLO-Face ONNX esteja disponível para o OpenCV DNN."""
 
-    ensure_dir(YOLO_MODEL_PATH.parent)
+    if YOLO_FACE_MODEL_PATH.exists() and YOLO_FACE_MODEL_PATH.stat().st_size > 5_000_000:
+        return YOLO_FACE_MODEL_PATH
+
+    ensure_dir(YOLO_FACE_MODEL_PATH.parent)
     if skip_downloads:
-        raise FileNotFoundError(
-            f"Modelo YOLO-Face não encontrado. Execute primeiro:\n"
-            f"  python export_yolo_face.py\n"
-            f"Ou coloque o arquivo em: {YOLO_MODEL_PATH}"
-        )
+        raise FileNotFoundError(f"Modelo YOLO-Face não encontrado em {YOLO_FACE_MODEL_PATH}")
 
     last_error: Exception | None = None
-    for url in YOLO_MODEL_URLS:
+    for url in YOLO_FACE_MODEL_URLS:
         try:
-            print(f"Baixando modelo YOLO-Face de: {url[:60]}...")
-            download_file(url, YOLO_MODEL_PATH)
-            # Verifica integridade
-            if YOLO_MODEL_PATH.stat().st_size < 5_000_000:
-                raise RuntimeError("Download incompleto (arquivo muito pequeno)")
-            print(f"✅ Modelo baixado: {YOLO_MODEL_PATH.stat().st_size / 1024 / 1024:.1f} MB")
-            return YOLO_MODEL_PATH
+            print(f"Baixando modelo YOLO-Face: {url}")
+            download_file(url, YOLO_FACE_MODEL_PATH)
+            if YOLO_FACE_MODEL_PATH.stat().st_size <= 5_000_000:
+                raise RuntimeError("Arquivo ONNX baixado com tamanho inesperado.")
+            return YOLO_FACE_MODEL_PATH
         except Exception as error:
-            print(f"  ❌ Falha: {error}")
             last_error = error
 
-    raise FileNotFoundError(
-        f"Não foi possível baixar o modelo YOLO-Face: {last_error}\n"
-        f"\nSolução: Execute 'python export_yolo_face.py' para gerar o modelo localmente."
-    )
+    raise FileNotFoundError(f"Não foi possível obter o modelo YOLO-Face: {last_error}")
 
 
 class YOLOFaceOnnxDetector:
-    """
-    Detector de faces usando YOLO-Face (lindevs) otimizado para OpenCV DNN.
-    
-    Formato de saída do modelo exportado: (1, 5, 8400)
-    - 4 primeiros valores: x_center, y_center, width, height
-    - 5º valor: confidence score (apenas 1 classe = face)
-    
-    NOTA: O modelo foi exportado com:
-      - dynamic=False (shapes estáticos)
-      - opset=12 (compatível com OpenCV 4.x)
-      - simplify=True (grafo simplificado)
-    """
+    """Executa inferência do YOLO-Face ONNX pelo módulo OpenCV DNN."""
+
     def __init__(
         self,
         model_path: Path,
@@ -70,7 +49,9 @@ class YOLOFaceOnnxDetector:
         self.input_size = input_size
 
     def detect(self, image_bgr: np.ndarray) -> list[dict]:
-        height, width = image_bgr.shape[:2]
+        """Retorna caixas, scores e classe para faces detectadas no frame."""
+
+        image_height, image_width = image_bgr.shape[:2]
         blob = cv2.dnn.blobFromImage(
             image_bgr,
             scalefactor=1.0 / 255.0,
@@ -80,103 +61,78 @@ class YOLOFaceOnnxDetector:
         )
         self.net.setInput(blob)
         predictions = self.net.forward()
-        detections = self._postprocess(predictions, width, height)
-        return detections
+        return self._postprocess(predictions, image_width, image_height)
 
     def _postprocess(self, output: np.ndarray, image_width: int, image_height: int) -> list[dict]:
-        """
-        Processa saída do modelo lindevs yolov8n-face.
-        
-        Formato de entrada: (1, 5, 8400) — [x_center, y_center, width, height, conf]
-        Precisamos transpor para (8400, 5) para iterar por anchor
-        """
-        data = np.squeeze(output)
-        
-        # Verifica e corrige formato da saída
-        if data.ndim != 2:
-            raise ValueError(f"Dimensão inesperada: {data.ndim}, shape: {data.shape}")
-        
-        # O modelo exporta como (5, 8400) — precisamos transpor
-        if data.shape[0] == 5 and data.shape[1] == 8400:
-            data = data.T  # (5, 8400) -> (8400, 5)
-        elif data.shape[0] == 8400 and data.shape[1] == 5:
-            pass  # Já está correto
-        else:
-            raise ValueError(
-                f"Shape inesperado: {data.shape}. "
-                f"Esperado (5, 8400) ou (8400, 5)"
-            )
+        """Converte a saída ONNX do YOLO-Face em bounding boxes no frame original."""
 
+        output_data = np.squeeze(output)
+        if output_data.ndim != 2:
+            raise ValueError(f"Saída YOLO-Face inesperada com shape {output.shape}")
+
+        if output_data.shape[0] == 5:
+            output_data = output_data.T
+        if output_data.shape[1] != 5:
+            raise ValueError(f"Saída YOLO-Face incompatível com shape {output_data.shape}")
+
+        width_factor = image_width / self.input_size
+        height_factor = image_height / self.input_size
         boxes: list[list[int]] = []
         confidences: list[float] = []
 
-        x_factor = image_width / self.input_size
-        y_factor = image_height / self.input_size
-
-        for row in data:
-            if len(row) < 5:
-                continue
-
-            # Formato: [x_center, y_center, width, height, confidence]
-            cx, cy, w, h, confidence = row
-            
+        for row in output_data:
+            center_x, center_y, box_width, box_height, confidence = row
             confidence = float(confidence)
-            
             if confidence < self.confidence_threshold:
                 continue
 
-            # Converte para coordenadas da imagem original
-            x1 = int((cx - w / 2) * x_factor)
-            y1 = int((cy - h / 2) * y_factor)
-            x2 = int((cx + w / 2) * x_factor)
-            y2 = int((cy + h / 2) * y_factor)
-
-            # Garante coordenadas válidas
-            x1, y1 = max(0, x1), max(0, y1)
-            x2, y2 = min(image_width, x2), min(image_height, y2)
-
-            if x2 > x1 and y2 > y1:
-                # Formato [x, y, w, h] para NMS
-                boxes.append([x1, y1, x2 - x1, y2 - y1])
+            left = int((center_x - box_width / 2) * width_factor)
+            top = int((center_y - box_height / 2) * height_factor)
+            right = int((center_x + box_width / 2) * width_factor)
+            bottom = int((center_y + box_height / 2) * height_factor)
+            left = max(0, left)
+            top = max(0, top)
+            right = min(image_width, right)
+            bottom = min(image_height, bottom)
+            if right > left and bottom > top:
+                boxes.append([left, top, right - left, bottom - top])
                 confidences.append(confidence)
 
-        # NMS
         if not boxes:
             return []
-            
-        indices = cv2.dnn.NMSBoxes(
-            boxes, confidences, self.confidence_threshold, self.nms_threshold
-        )
-        
-        results: list[dict] = []
-        if len(indices) == 0:
-            return results
 
-        flat_indices = np.array(indices).reshape(-1)
-        for index in flat_indices:
-            x, y, w, h = boxes[int(index)]
-            results.append(
+        indices = cv2.dnn.NMSBoxes(
+            boxes,
+            confidences,
+            self.confidence_threshold,
+            self.nms_threshold,
+        )
+        detections: list[dict] = []
+        for index in np.array(indices).reshape(-1):
+            left, top, width, height = boxes[int(index)]
+            detections.append(
                 {
-                    "box": [int(x), int(y), int(x + w), int(y + h)],
+                    "box": [left, top, left + width, top + height],
                     "score": float(confidences[int(index)]),
                     "label": "face",
                     "method": "yolo-face",
                 }
             )
-        return results
+        return detections
 
 
 def draw_yolo_face_detections(image_bgr: np.ndarray, detections: list[dict]) -> np.ndarray:
-    """Desenha bounding boxes das faces detectadas pelo YOLO-Face."""
+    """Desenha as caixas retornadas pelo YOLO-Face."""
+
     output = image_bgr.copy()
     for detection in detections:
-        x1, y1, x2, y2 = detection["box"]
+        left, top, right, bottom = detection["box"]
         score = detection["score"]
-        cv2.rectangle(output, (x1, y1), (x2, y2), (0, 255, 128), 2)
+        cv2.rectangle(output, (left, top), (right, bottom), (0, 255, 128), 2)
         cv2.putText(
             output,
             f"YOLO-Face {score:.2f}",
-            (x1, max(20, y1 - 8)),
+            (left, max(20, top - 8)),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.55,
             (0, 255, 128),

@@ -1,2 +1,2 @@
 @echo off
-py -3.13 -m src.main
+py -3 -m src.main

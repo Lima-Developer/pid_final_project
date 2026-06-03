@@ -1,0 +1,51 @@
+{
+  "case": "Detectar rostos em vídeo e aplicar desfoque para privacidade",
+  "input_video": "data/corte_video_base/corte_video_base.mp4",
+  "output_video": "results/video/privacy_video.mp4",
+  "width": 1920,
+  "height": 1080,
+  "fps": 60.0,
+  "duration_seconds": 10.733333333333333,
+  "processed_frames": 644,
+  "frames_with_faces": 644,
+  "total_face_detections": 1213,
+  "average_faces_per_frame": 1.8835403726708075,
+  "max_faces_in_frame": 2,
+  "sample_frame_index": 322,
+  "sample_face_boxes": [
+    [
+      981,
+      122,
+      1437,
+      594
+    ],
+    [
+      331,
+      128,
+      698,
+      588
+    ]
+  ],
+  "yolo_face_count_on_sample": 1,
+  "detector_used": "yolo-face+roi",
+  "outputs": [
+    "results/video/privacy_video.mp4",
+    "results/frames/final_result.png",
+    "results/frames/face_mask.png",
+    "results/frames/faces_detected_frame.png",
+    "results/panels/final_panel.png",
+    "results/panels/roi_mask_blend_2x2.png",
+    "results/panels/yolo_face_panel.png",
+    "results/panels/haar_vs_yolo_face_comparison.png",
+    "results/preprocessing/01_original_frame.png",
+    "results/preprocessing/02_grayscale.png",
+    "results/preprocessing/03_gaussian_blur.png",
+    "results/preprocessing/04_threshold_otsu.png",
+    "results/preprocessing/05_threshold_adaptive_comparison.png",
+    "results/preprocessing/06_sobel_magnitude.png",
+    "results/preprocessing/07_canny_comparison.png",
+    "results/preprocessing/preprocessing_panel.png",
+    "results/report.md",
+    "results/summary.json"
+  ]
+}
